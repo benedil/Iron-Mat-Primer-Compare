@@ -1,0 +1,410 @@
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+
+#	# back-to-back bar plots comparing V3V4 and V4V5 datasets at different taxonomic levels
+# data were collated from condensed count tables
+
+# ARCHAEA
+
+# manually creating a df with the archaeal phylum counts for each primer
+arch_v3v4 <- c(0, 26, 1, 8, 8, 3, 3, 13)
+arch_v4v5 <- c(7, 53, 0, 4, 7, 2, 11, 19)
+arch_labs <- c("Asgardarchaeota", "Crenarchaeota", "Euryarchaeota", "Halobacterota", 
+               "Hydrothermarchaeota","Unclassified", "Nanoarchaeota", "Thermoplasmatota")
+
+arch_df = data.frame(arch_labs=rep(arch_labs,2), values=c(arch_v3v4, arch_v4v5), 
+                     primer=rep(c("v3v4", "v4v5"), each=length(arch_labs))) %>% 
+  mutate(arch_labs = factor(arch_labs, levels = c("Crenarchaeota", "Thermoplasmatota", "Nanoarchaeota", "Asgardarchaeota", 
+                                                  "Hydrothermarchaeota", "Halobacterota", "Unclassified", "Euryarchaeota"))) 
+
+# setting the order in which the bars will be displayed, top to bottom
+arch_order <- c("Euryarchaeota", "Unclassified", "Halobacterota", "Hydrothermarchaeota",
+                "Asgardarchaeota","Nanoarchaeota", "Thermoplasmatota", "Crenarchaeota")
+
+# setting the common theme and the basic background of the two plots
+ggplotArch <- ggplot(data =arch_df, aes(x=arch_labs)) + theme_classic() #theme_classic has no background fill or grid
+ggplotArch
+
+# the righthand side of the plot
+arch_v4v5_center <- ggplotArch +
+  geom_bar(data=arch_df[arch_df$primer=="v4v5",], aes(y=values, fill=arch_labs), stat='identity') + #stat='identity' is needed for discrete variables
+  scale_y_continuous(limits = c(0, 60), #sets defined limits for horizontal axis
+                     expand = expansion(add=c(1.25,2))) + #sets distance between axis and plot data and expands axis on free end to make space for labels
+  scale_x_discrete(limits = arch_order) + #orders the bars by provided list, top to bottom
+  scale_fill_manual(values = c("#00d9fc", "#2debc1", "#e6ffac", "#b5a95f", "#dca68f", "#df80ab", "#dd886b", "#ffe1c2")) + #sets colors for bars using pre-defined function
+  geom_text(data=arch_df[arch_df$primer=="v4v5",], aes(y= values, label = values), hjust = -0.5, size=8) + #adds labels to the ends of the bars
+  theme(legend.position = 'none', #removes legend
+        legend.title = element_text(face = "bold"), #sets legend title to bold (patchwork will collect this)
+        axis.title.y = element_blank(), #removes vertical axis title (using coord_flip)
+        plot.title = element_text(size = 20, face = "bold"), #sets size and face of plot title
+        plot.margin=margin(c(0.1,0.1,0.1,0.1),"cm"), #t, r, b, l  
+        axis.ticks.y = element_blank(), #removes axis ticks on vertical axis
+        axis.text.y = element_text(hjust = 0.5, size = 18), #removes axis text on vertical axis
+        axis.line.y = element_blank(), #removes vertical axis line
+        axis.ticks.length.y = unit(0, "pt"),
+        axis.text.x = element_text(size = 16),
+        axis.title.x = element_text(size = 18)) +  #removes the space between horizontal axes in finished plot
+  ylab("ASVs per Phylum") + #this will be the horizontal axis in the finished plot
+  labs(fill = "Archaeal Phylum") +
+  ggtitle("V4V5") + 
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  coord_flip()
+
+#lefthand side of the plot, no legend and the limits for the horizontal (y-axis) must be reversed
+arch_v3v4_center <- ggplotArch +
+  geom_bar(data=arch_df[arch_df$primer=="v3v4",], aes(y=values, fill=arch_labs), stat='identity') + #stat='identity' is needed for discrete variables
+  scale_y_continuous(limits = c(60, 0),
+                     expand = expansion(add=c(2,1.75)),
+                     trans = 'reverse') + #sets defined limits for horizontal axis & reverses axis for lefthand plot
+  scale_fill_manual(values = c("#00d9fc", "#2debc1", "#e6ffac", "#b5a95f", "#dca68f", "#df80ab", "#dd886b", "#ffe1c2")) + #sets colors for bars using pre-defined function
+  scale_x_discrete(limits = arch_order) + #orders the bars by provided list, top to bottom
+  geom_text(data=arch_df[arch_df$primer=="v3v4",], aes(y= values, label = values), hjust = 1.5, size=8) + #adds labels to the ends of the bars
+  theme(legend.position = 'none', #removes legend
+        legend.title = element_text(face = "bold"), #sets legend title to bold (patchwork will collect this)
+        axis.title.y = element_blank(), #removes vertical axis title (using coord_flip)
+        plot.title = element_text(size = 20, face = "bold"), #sets size and face of plot title
+        plot.margin=margin(c(0.1,0.1,0.1,0.2),"cm"), #t, r, b, l  
+        axis.ticks.y = element_blank(), #removes axis ticks on vertical axis
+        axis.text.y = element_blank(), #removes axis text on vertical axis
+        axis.line.y = element_blank(), #removes vertical axis line
+        axis.ticks.length.y = unit(0, "pt"),
+        axis.text.x = element_text(size = 16),
+        axis.title.x = element_text(size = 18)) +  #removes the space between horizontal axes in finished plot
+  ylab("ASVs per Phylum") + #this will be the horizontal axis in the finished plot
+  labs(fill = "Archaeal Phylum") +
+  ggtitle("V3V4") + 
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  coord_flip()
+
+arch_combined_center <- arch_v3v4_center + arch_v4v5_center
+
+
+# BACTERIA
+
+# plot for the phyla with relabund above 1%, including "Other" to match pie charts
+
+# manually creating a df with the bacterial phylum counts for each primer
+bact1_v3v4 <- c(1322, 262, 498, 55, 55, 709, 135, 55, 57, 16, 206, 83, 51, 24, 550)
+bact1_v4v5 <- c(979, 289, 447, 37, 34, 393, 128, 64, 72, 12, 58, 27, 38, 14, 593)
+bact1_labs <- c("Proteobacteria", "Bacteroidota", "Planctomycetota", "Nitrospirota", 
+                "DTB120", "Unclassified", "Chloroflexi", "Desulfobacterota", "Acidobacteriota", 
+                "MBNT15", "Patescibacteria", "Campilobacterota", "Actinobacteriota", "Calditrichota", "Other")
+
+bact1_df = data.frame(bact1_labs=rep(bact1_labs,2), values=c(bact1_v3v4, bact1_v4v5), 
+                      primer=rep(c("v3v4", "v4v5"), each=length(bact1_labs))) %>% 
+  mutate(bact1_labs = factor(bact1_labs, levels = c("Proteobacteria", "Bacteroidota", "Planctomycetota", "Nitrospirota", 
+                                                    "DTB120", "Unclassified", "Chloroflexi", "Desulfobacterota", "Acidobacteriota", 
+                                                    "MBNT15", "Patescibacteria", "Campilobacterota", "Actinobacteriota", "Calditrichota", "Other"))) 
+
+# setting the order in which the bars will be displayed, top to bottom
+bact1_order <- c("Other", "Calditrichota", "Actinobacteriota", "Campilobacterota", 
+                 "Patescibacteria", "MBNT15", "Acidobacteriota", "Desulfobacterota", "Chloroflexi", 
+                 "Unclassified", "DTB120", "Nitrospirota", "Planctomycetota", "Bacteroidota", 
+                 "Proteobacteria")
+
+# setting the common theme and the basic background of the two plots
+ggplotBact1 <- ggplot(data =bact1_df, aes(x=bact1_labs)) + theme_classic() + 
+  theme(plot.margin = margin(c(0,0,0,0),"pt"),
+        axis.ticks.y = element_blank(),
+        axis.ticks.length.y = unit(0, "pt")) #theme_classic has no background fill or grid
+
+# the righthand side of the plot
+bact1_v4v5_center <- ggplotBact1 +
+  geom_bar(data=bact1_df[bact1_df$primer=="v4v5",], aes(y=values, fill=bact1_labs), stat='identity') + #stat='identity' is needed for discrete variables
+  scale_y_continuous(limits = c(0, 1500), #sets defined limits for horizontal axis
+                     expand = expansion(add=c(15, 50))) + #sets spacing between axis and plot data
+  scale_x_discrete(limits = bact1_order) + #orders the bars by provided list, top to bottom
+  scale_fill_manual(values = c("#FF9933", "#dd886b", "#B31542", "#ffdbff", "#e987fa", "#ff6fca", "#dca68f", "#b5a95f", 
+                               "#cfd383", "#bcf5a1", "#44df9f", "#20f5e1", "#00d9fc", "#3588d1", "#B7B7B7"), guide = guide_legend(ncol = 1)) +
+  geom_text(data=bact1_df[bact1_df$primer=="v4v5",], aes(y= values, label = values), hjust = -0.5, size=10) + #adds labels to the ends of the bars
+  theme(legend.position = 'none', 
+        legend.title = element_text(face = "bold"),
+        axis.title.y = element_blank(),
+        plot.title = element_text(size = 40, face = "bold"),
+        plot.margin=margin(c(0,0,0,0),"pt"), #t, r, b, l -- need smaller left margin on right half
+        axis.ticks.y = element_blank(),
+        axis.line.y = element_blank(), #removing the vertical axis line
+        axis.text.y = element_text(hjust = 0.5, size = 30),
+        axis.ticks.length.y = unit(0, "pt"),
+        axis.text.x = element_text(size=30),
+        axis.title.x = element_text(size = 26)) + 
+  ylab("ASVs per Phylum") + #this will be the horizontal axis in the finished plot
+  labs(fill = "Bacterial Phylum") +
+  ggtitle("V4V5") + 
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  coord_flip()
+
+#lefthand side of the plot, no legend and the limits for the horizontal (y-axis) must be reversed
+bact1_v3v4_center <- ggplotBact1 +
+  geom_bar(data=bact1_df[bact1_df$primer=="v3v4",], aes(y=values, fill=bact1_labs), stat='identity') + #stat='identity' is needed for discrete variables
+  scale_y_continuous(limits = c(1500, 0),
+                     expand = expansion(add=c(50, 25)), #sets spacing between axis and plot data
+                     trans = 'reverse') + #sets defined limits for horizontal axis & reverses axis for lefthand plot
+  scale_fill_manual(values = c("#FF9933", "#dd886b", "#B31542", "#ffdbff", "#e987fa", "#ff6fca", "#dca68f", "#b5a95f", 
+                               "#cfd383", "#bcf5a1", "#44df9f", "#20f5e1", "#00d9fc", "#3588d1", "#B7B7B7"), guide = guide_legend(ncol = 1)) +
+  scale_x_discrete(limits = bact1_order) + #orders the bars by provided list, top to bottom
+  geom_text(data=bact1_df[bact1_df$primer=="v3v4",], aes(y= values, label = values), hjust = 1.5, size=10) + #adds labels to the ends of the bars
+  theme(legend.position = 'none', 
+        legend.title = element_text(face = "bold"),
+        axis.title.y = element_blank(),
+        plot.title = element_text(size = 40, face = "bold"),
+        plot.margin=margin(c(0.1,0.5,0.1,0.5),"cm"), #t, r, b, l -- need smaller right margin on left half 
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.line.y = element_blank(), #removing vertical axis line
+        axis.ticks.length.y = unit(0, "pt"),
+        axis.text.x = element_text(size=30),
+        axis.title.x = element_text(size = 26)) + 
+  ylab("ASVs per Phylum") + #this will be the horizontal axis in the finished plot
+  labs(fill = "Bacterial Phylum") +
+  ggtitle("V3V4") + 
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  coord_flip()
+
+bact1_combined_center <- bact1_v3v4_center + bact1_v4v5_center
+
+
+# PROTEO-CAMPY
+
+# manually creating a df with the bacterial phylum counts for each primer
+PC_v3v4 <- c(623, 350, 266, 83, 83)
+PC_v4v5 <- c(531, 333, 89, 27, 26)
+PC_labs <- c("Gammaproteobacteria", "Alphaproteobacteria", "Zetaproteobacteria", "Campylobacteria", "Other")
+
+PC_df = data.frame(PC_labs=rep(PC_labs,2), values=c(PC_v3v4, PC_v4v5), 
+                   primer=rep(c("v3v4", "v4v5"), each=length(PC_labs))) %>% 
+  mutate(PC_labs = factor(PC_labs, levels = c("Gammaproteobacteria", "Alphaproteobacteria", "Zetaproteobacteria", "Campylobacteria", "Other"))) 
+
+# setting the order in which the bars will be displayed, top to bottom
+PC_order <- c("Other", "Campylobacteria", "Zetaproteobacteria", "Alphaproteobacteria", "Gammaproteobacteria")
+
+# setting the common theme and the basic background of the two plots
+ggplotPC <- ggplot(data =PC_df, aes(x=PC_labs)) + theme_classic() + 
+  theme(plot.margin = margin(c(0,0,0,0),"pt"),
+        axis.ticks.y = element_blank(),
+        axis.ticks.length.y = unit(0, "pt")) #theme_classic has no background fill or grid
+
+# the righthand side of the plot
+PC_v4v5p_center <- ggplotPC +
+  geom_bar(data=PC_df[PC_df$primer=="v4v5",], aes(y=values, fill=PC_labs), stat='identity') + #stat='identity' is needed for discrete variables
+  scale_y_continuous(limits = c(0, 700), #sets defined limits for horizontal axis
+                     expand = expansion(add=c(18, 150))) + #sets spacing between axis and plot data
+  scale_x_discrete(limits = PC_order) + #orders the bars by provided list, top to bottom
+  scale_fill_manual(values = c("#9a8040", "#B31542", "#FF9933", "#F6F10F", "#44df9f"), guide = guide_legend(ncol = 1)) +
+  geom_text(data=PC_df[PC_df$primer=="v4v5",], aes(y= values, label = values), hjust = -0.5, size=8) + #adds labels to the ends of the bars
+  theme(legend.position = 'none', 
+        legend.title = element_text(face = "bold"),
+        axis.title.y = element_blank(),
+        plot.title = element_text(size = 30, face = "bold"),
+        plot.margin=margin(c(0,0,0,0),"pt"), #t, r, b, l -- need smaller left margin on right half
+        axis.ticks.y = element_blank(),
+        axis.line.y = element_blank(), #removing the vertical axis line
+        axis.text.y = element_text(hjust = 0.5, size = 28),
+        axis.ticks.length.y = unit(0, "pt"),
+        axis.text.x = element_text(size=24),
+        axis.title.x = element_text(size = 26)) + 
+  ylab("ASVs per Class") + #this will be the horizontal axis in the finished plot
+  labs(fill = "Class") +
+  ggtitle("V4V5") + 
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  coord_flip()
+
+#lefthand side of the plot, no legend and the limits for the horizontal (y-axis) must be reversed
+PC_v3v4p_center <- ggplotPC +
+  geom_bar(data=PC_df[PC_df$primer=="v3v4",], aes(y=values, fill=PC_labs), stat='identity') + #stat='identity' is needed for discrete variables
+  scale_y_continuous(limits = c(700, 0),
+                     expand = expansion(add=c(150, 25)), #sets spacing between axis and plot data
+                     trans = 'reverse') + #sets defined limits for horizontal axis & reverses axis for lefthand plot
+  scale_fill_manual(values = c("#9a8040", "#B31542", "#FF9933", "#F6F10F", "#44df9f"), guide = guide_legend(ncol = 1)) +
+  scale_x_discrete(limits = PC_order) + #orders the bars by provided list, top to bottom
+  geom_text(data=PC_df[PC_df$primer=="v3v4",], aes(y= values, label = values), hjust = 1.5, size=8) + #adds labels to the ends of the bars
+  theme(legend.position = 'none', 
+        legend.title = element_text(face = "bold"),
+        axis.title.y = element_blank(),
+        plot.title = element_text(size = 30, face = "bold"),
+        plot.margin=margin(c(0.1,0.1,0.1,0.1),"cm"), #t, r, b, l -- need smaller right margin on left half 
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.line.y = element_blank(), #removing vertical axis line
+        axis.ticks.length.y = unit(0, "pt"),
+        axis.text.x = element_text(size=24),
+        axis.title.x = element_text(size = 26)) + 
+  ylab("ASVs per Class") + #this will be the horizontal axis in the finished plot
+  labs(fill = "Class") +
+  ggtitle("V3V4") + 
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  coord_flip()
+
+PC_combined_center <- PC_v3v4p_center + PC_v4v5p_center 
+
+
+# ZOTUS
+
+# manually creating a df with the reads per zOTU from the most abundant zOTUs (above 10k reads per)
+Top_zOTU_v3v4 <- c(283969, 79264, 10488, 35755, 41237, 7103, 10175, 10298)
+Top_zOTU_v4v5 <- c(554809, 93670, 94748, 63470, 45848, 40735, 35529, 25828)
+Top_zOTU_labs <- c("zOTU2", "zOTU1", "zOTU14", "zOTU10", "zOTU4", "zOTU48", "zOTU9", 
+               "zOTU6")
+
+Top_zOTU_df = data.frame(Top_zOTU_labs=rep(Top_zOTU_labs,2), values=c(Top_zOTU_v3v4, Top_zOTU_v4v5), 
+                   primer=rep(c("v3v4", "v4v5"), each=length(Top_zOTU_labs))) %>% 
+  mutate(Top_zOTU_labs = factor(Top_zOTU_labs, levels = c("zOTU2", "zOTU1", "zOTU14", "zOTU10", "zOTU4", "zOTU48", "zOTU9", 
+                                                  "zOTU6"))) 
+
+# setting the order in which the bars will be displayed, top to bottom
+Top_zOTU_order <- c("zOTU6", "zOTU9", "zOTU48", "zOTU4", "zOTU10", "zOTU14", 
+                "zOTU1", "zOTU2")
+
+# setting the common theme and the basic background of the two plots
+ggplotTopzOTU <- ggplot(data =Top_zOTU_df, aes(x=Top_zOTU_labs)) + theme_classic() + 
+  theme(plot.margin = margin(c(0,0,0,0),"pt"),
+        axis.ticks.y = element_blank(),
+        axis.ticks.length.y = unit(0, "pt")) #theme_classic has no background fill or grid
+
+options(scipen = 999)
+
+# the righthand side of the plot
+Top_zOTU_v4v5p_center <- ggplotTopzOTU +
+  geom_bar(data=Top_zOTU_df[Top_zOTU_df$primer=="v4v5",], aes(y=values, fill=Top_zOTU_labs), stat='identity') + #stat='identity' is needed for discrete variables
+  scale_y_continuous(limits = c(0, 600000), #sets defined limits for horizontal axis
+                     expand = expansion(add=c(1000, 20000))) + #sets spacing between axis and plot data
+  scale_x_discrete(limits = Top_zOTU_order) + #orders the bars by provided list, top to bottom
+  scale_fill_manual(values = c("#3588d1", "#00b1ee", "#00d9fc", "#34ffff", "#20f5e1", "#2debc1", "#44df9f", "#8aea9c"), guide = guide_legend(ncol = 1)) +
+  geom_text(data=Top_zOTU_df[Top_zOTU_df$primer=="v4v5",], aes(y= values, label = values), hjust = -0.25, size=5.5) + #adds labels to the ends of the bars
+  theme(legend.position = 'none', 
+        legend.title = element_text(face = "bold"),
+        axis.title.y = element_blank(),
+        plot.title = element_text(size = 20, face = "bold"),
+        plot.margin=margin(c(0,0,0,0),"pt"), #t, r, b, l -- need smaller left margin on right half
+        axis.ticks.y = element_blank(),
+        axis.line.y = element_blank(), #removing the vertical axis line
+        axis.text.y = element_text(hjust = 0.5, size = 18),
+        axis.ticks.length.y = unit(0, "pt"),
+        axis.title.x = element_blank(),
+        axis.text.x = element_text(size = 16)) + #removing the ylab on the Top_zOTU plot, since the Bot_zOTU plot will have it) + 
+  #ylab("Reads per zOTU") + #removing the ylab on the Top_zOTU plot, since the Bot_zOTU plot will have it
+  labs(fill = "") +
+  ggtitle("V4V5") + 
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  coord_flip()
+
+#lefthand side of the plot, no legend and the limits for the horizontal (y-axis) must be reversed
+Top_zOTU_v3v4p_center <- ggplotTopzOTU +
+  geom_bar(data=Top_zOTU_df[Top_zOTU_df$primer=="v3v4",], aes(y=values, fill=Top_zOTU_labs), stat='identity') + #stat='identity' is needed for discrete variables
+  scale_y_continuous(limits = c(600000, 0),
+                     expand = expansion(add=c(20000, 6000)), #sets spacing between axis and plot data
+                     trans = 'reverse') + #sets defined limits for horizontal axis & reverses axis for lefthand plot
+  scale_fill_manual(values = c("#3588d1", "#00b1ee", "#00d9fc", "#34ffff", "#20f5e1", "#2debc1", "#44df9f", "#8aea9c"), guide = guide_legend(ncol = 1)) +
+  scale_x_discrete(limits = Top_zOTU_order) + #orders the bars by provided list, top to bottom
+  geom_text(data=Top_zOTU_df[Top_zOTU_df$primer=="v3v4",], aes(y= values, label = values), hjust = 1.25, size=5.5) + #adds labels to the ends of the bars
+  theme(legend.position = 'none', 
+        legend.title = element_text(face = "bold"),
+        axis.title.y = element_blank(),
+        plot.title = element_text(size = 20, face = "bold"),
+        plot.margin=margin(c(0.1,0.1,0.1,0.1),"cm"), #t, r, b, l -- need smaller right margin on left half 
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.line.y = element_blank(), #removing vertical axis line
+        axis.ticks.length.y = unit(0, "pt"),
+        axis.title.x = element_blank(),
+        axis.text.x = element_text(size = 16)) + #removing the ylab on the Top_zOTU plot, since the Bot_zOTU plot will have it
+  #ylab("Reads per zOTU") + #removing the ylab on the Top_zOTU plot, since the Bot_zOTU plot will have it
+  labs(fill = "") +
+  ggtitle("V3V4") + 
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  coord_flip()
+
+Top_zOTU_combined_center <- Top_zOTU_v3v4p_center + Top_zOTU_v4v5p_center 
+
+
+# manually creating a df with the reads per zOTU from the least abundant zOTUs (below 10k reads per)
+Bot_zOTU_v3v4 <- c(3169, 3882, 2632, 5264, 1521, 3954, 0, 863, 680, 506, 487, 380, 493, 154, 48, 148, 
+                   92, 20, 44, 0, 312)
+Bot_zOTU_v4v5 <- c(8971, 6924, 6328, 730, 3379, 0, 2848, 1619, 1596, 1286, 1090, 934, 0, 268, 140, 10, 
+                   0, 51, 0, 2, 52)
+Bot_zOTU_labs <- c("zOTU3", "zOTU13", "zOTU11", "zOTU18", "zOTU20", "zOTU52", 
+                   "zOTU54", "zOTU35", "zOTU15", "zOTU59", "zOTU36", "zOTU37", "zOTU31", 
+                   "zOTU49", "zOTU7", "zOTU26", "zOTU23", "zOTU38", "zOTU40", "zOTU12", 
+                   "NewzOTUs")
+
+Bot_zOTU_df = data.frame(Bot_zOTU_labs=rep(Bot_zOTU_labs,2), values=c(Bot_zOTU_v3v4, Bot_zOTU_v4v5), 
+                         primer=rep(c("v3v4", "v4v5"), each=length(Bot_zOTU_labs))) %>% 
+  mutate(Bot_zOTU_labs = factor(Bot_zOTU_labs, levels = c("zOTU3", "zOTU13", "zOTU11", "zOTU18", "zOTU20", "zOTU52", 
+                                                  "zOTU54", "zOTU35", "zOTU15", "zOTU59", "zOTU36", "zOTU37", "zOTU31", 
+                                                  "zOTU49", "zOTU7", "zOTU26", "zOTU23", "zOTU38", "zOTU40", "zOTU12", 
+                                                  "NewzOTUs"))) 
+
+# setting the order in which the bars will be displayed, top to bottom
+Bot_zOTU_order <- c("NewzOTUs", "zOTU12", "zOTU40", "zOTU38", "zOTU23", "zOTU26", 
+                "zOTU7", "zOTU49", "zOTU31", "zOTU37", "zOTU36", "zOTU59", "zOTU15", 
+                "zOTU35", "zOTU54", "zOTU52", "zOTU20", "zOTU18", "zOTU11", "zOTU13", 
+                "zOTU3")
+
+# setting the common theme and the basic background of the two plots
+ggplotBotzOTU <- ggplot(data =Bot_zOTU_df, aes(x=Bot_zOTU_labs)) + theme_classic() + 
+  theme(plot.margin = margin(c(0,0,0,0),"pt"),
+        axis.ticks.y = element_blank(),
+        axis.ticks.length.y = unit(0, "pt")) #theme_classic has no background fill or grid
+
+# the righthand side of the plot
+Bot_zOTU_v4v5p_center <- ggplotBotzOTU +
+  geom_bar(data=Bot_zOTU_df[Bot_zOTU_df$primer=="v4v5",], aes(y=values, fill=Bot_zOTU_labs), stat='identity') + #stat='identity' is needed for discrete variables
+  scale_y_continuous(limits = c(0, 10000), #sets defined limits for horizontal axis
+                     expand = expansion(add=c(50, 300))) + #sets spacing between axis and plot data
+  scale_x_discrete(limits = Bot_zOTU_order) + #orders the bars by provided list, top to bottom
+  scale_fill_manual(values = c("#bcf5a1", "#e6ffac", "#cfd383", "#b5a95f", "#9a8040", "#c89972", "#e9b7a8", "#ffdbdb", 
+                               "#ff9bbe", "#ff53cc", "#C00CF8", "#dd69f9", "#f2a3fb", "#ffdaff", "#ffa7d9", "#ff6f9c", 
+                               "#f8304d", "#fd9e60", "#ffe8b2", "#ffd56c", "#ffc000"), guide = guide_legend(ncol = 1)) + 
+  geom_text(data=Bot_zOTU_df[Bot_zOTU_df$primer=="v4v5",], aes(y= values, label = values), hjust = -0.25, size=5.5) + #adds labels to the ends of the bars
+  theme(legend.position = 'none', 
+        legend.title = element_text(face = "bold"),
+        axis.title.y = element_blank(),
+        plot.title = element_text(size = 20, face = "bold"),
+        plot.margin=margin(c(0,0,0,0),"pt"),
+        axis.ticks.y = element_blank(),
+        axis.line.y = element_blank(), #removing the vertical axis line
+        axis.text.y = element_text(hjust = 0.5, size = 16),
+        axis.ticks.length.y = unit(0, "pt"),
+        axis.title.x = element_text(size = 18),
+        axis.text.x = element_text(size = 16)) +  
+  ylab("Reads per zOTU") + 
+  labs(fill = "") +
+  #ggtitle("V4V5") + no titles for the bottom plots
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  coord_flip()
+
+#lefthand side of the plot, no legend and the limits for the horizontal (y-axis) must be reversed
+Bot_zOTU_v3v4p_center <- ggplotBotzOTU +
+  geom_bar(data=Bot_zOTU_df[Bot_zOTU_df$primer=="v3v4",], aes(y=values, fill=Bot_zOTU_labs), stat='identity') + #stat='identity' is needed for discrete variables
+  scale_y_continuous(limits = c(10000, 0),
+                     expand = expansion(add=c(300, 100)), #sets spacing between axis and plot data
+                     trans = 'reverse') + #sets defined limits for horizontal axis & reverses axis for lefthand plot
+  scale_fill_manual(values = c("#bcf5a1", "#e6ffac", "#cfd383", "#b5a95f", "#9a8040", "#c89972", "#e9b7a8", "#ffdbdb", 
+                               "#ff9bbe", "#ff53cc", "#C00CF8", "#dd69f9", "#f2a3fb", "#ffdaff", "#ffa7d9", "#ff6f9c", 
+                               "#f8304d", "#fd9e60", "#ffe8b2", "#ffd56c", "#ffc000"), guide = guide_legend(ncol = 1)) +
+  scale_x_discrete(limits = Bot_zOTU_order) + #orders the bars by provided list, top to bottom
+  geom_text(data=Bot_zOTU_df[Bot_zOTU_df$primer=="v3v4",], aes(y= values, label = values), hjust = 1.25, size=5.5) + #adds labels to the ends of the bars
+  theme(legend.position = 'none', 
+        legend.title = element_text(face = "bold"),
+        axis.title.y = element_blank(),
+        plot.title = element_text(size = 20, face = "bold"),
+        plot.margin=margin(c(0.1,0.1,0.1,0.1),"cm"), #t, r, b, l  
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.line.y = element_blank(), #removing vertical axis line
+        axis.ticks.length.y = unit(0, "pt"),
+        axis.title.x = element_text(size = 18),
+        axis.text.x = element_text(size = 16)) + 
+  ylab("Reads per zOTU") + 
+  labs(fill = "") +
+  #ggtitle("v3v4") + no titles for the bottom plots
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  coord_flip()
+
+Bot_zOTU_combined_center <- Bot_zOTU_v3v4p_center + Bot_zOTU_v4v5p_center 
+
+zOTU_combined_center <- Top_zOTU_combined_center/plot_spacer()/Bot_zOTU_combined_center + 
+  plot_layout(heights = c(4,0.1,10))
+zOTU_combined_center +
+  plot_annotation(theme = theme(plot.title = element_text(size = 14, face = "bold")))
