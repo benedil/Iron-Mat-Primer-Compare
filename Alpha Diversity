@@ -1,0 +1,197 @@
+library(tidyverse)
+library(readxl)
+library(glue)
+library(ggtext)
+library(RColorBrewer)
+library(ggpubr)
+library(vegan)
+library(textshape)
+library(phyloseq)
+library(reshape2)
+library(magrittr)
+library(ggplot2)
+library(purrr)
+library(broom)
+library(tidyr)
+library(dplyr)
+library(itsadug)
+library(skimr)
+
+# reading in data: table with both V3V4 and V4V5 alpha metrics, which were calculated from the uncondensed data
+raw_meta_alpha <- read_excel("forRiffo_NoFemo_RawASV_Alpha.xlsx", na="NA")
+
+# some of the basic ggplot tools from the riffomonas tutorial: "https://riffomonas.org/minimalR/08_statistical_analyses.html"
+
+#	# Calculating Significance for selected alpha stats
+
+str(raw_meta_alpha)
+raw_meta_alpha %>% 
+  nest(data = -primer)
+
+# shannon
+ggplot(raw_meta_alpha, aes(sample=shannon, group=primer, color=primer)) + geom_qq() + stat_qq_line() +
+  xlab("theoretical") +
+  ylab("sample")
+# plot looks wonky, but running shapiro gives:
+shapiro.test(raw_meta_alpha$shannon)
+# Shapiro-Wilk normality test
+# 
+# data:  raw_meta_alpha$shannon
+# W = 0.93249, p-value = 0.2669
+# data are normally distributed
+shannon_primer_aov <- aov(shannon~primer, data = raw_meta_alpha)
+summary(shannon_primer_aov)
+#             Df Sum Sq Mean Sq F value Pr(>F)
+# primer       1  2.587  2.5874   3.135 0.0984 .
+# Residuals   14 11.554  0.8253  
+# no significance in shannon by primer
+
+# simpson
+ggplot(raw_meta_alpha, aes(sample=simpson, group=primer, color=primer)) + geom_qq() + stat_qq_line() +
+  xlab("theoretical") +
+  ylab("sample")
+# definitely not normally distributed, will try transforming again
+shapiro.test(raw_meta_alpha$simpson)
+# Shapiro-Wilk normality test
+# 
+# data:  raw_meta_alpha$simpson
+# W = 0.69233, p-value = 0.0001391
+# data not normally distributed, running kruskal
+simpson_kruskal <- kruskal.test(simpson~primer, data = raw_meta_alpha) #let's see with the unscaled data using non-parametric
+simpson_kruskal
+# Kruskal-Wallis rank sum test
+# 
+# data:  simpson by primer
+# Kruskal-Wallis chi-squared = 1.5882, df = 1, p-value = 0.2076
+# no significance with simpson by primer
+
+# chao1
+ggplot(combined_sample_info, aes(sample=chao1, group=primer, color=primer)) + geom_qq() + stat_qq_line() +
+  xlab("theoretical") +
+  ylab("sample")
+shapiro.test(raw_meta_alpha$chao1)
+# 	Shapiro-Wilk normality test
+# data:  combined_sample_info$chao1
+# W = 0.93729, p-value = 0.3171
+#data normally distributed, running aov
+chao_primer_aov <- aov(chao1~primer, data = raw_meta_alpha)
+summary(chao_primer_aov)
+#             Df  Sum Sq Mean Sq F value Pr(>F)
+# primer       1  102482  102482   0.803  0.385
+# Residuals   14 1787711  127694
+# no significance in chao1 by primer
+
+
+#	# Alpha plots
+
+# creating pivot table of stats by location for jitter plot
+location_alpha <- raw_meta_alpha %>%  select(primer, location, chao1, shannon, simpson)
+location_melt <-  melt(location_alpha, id.vars = c("primer", "location")) %>% #choosing only the columns I want
+    mutate(variable = recode(variable, chao1 = "Chao1 Richness", 
+                         shannon = "Shannon Diversity", simpson = "Simpson Evenness"),
+         variable = factor(variable, levels = c("Chao1 Richness", "Shannon Diversity",
+                                            "Simpson Evenness")),
+         location = factor(location, levels = c("Pohaku", "Hiolo North", "Hiolo South", "Lohiau"))) #this renames the shorthand labels in the excel file, 
+          #and sets both the metric and the locations and factors to be used for aes mapping later
+
+# creating strip chart with jitter overlay for all alphas
+alpha_strip <- 
+  ggplot(location_melt, aes(x=primer, y=value, fill=primer)) +
+  geom_boxplot(aes(fill=factor(primer)), width= 0.5,alpha=0.2, outlier.shape=NA, size = 0.5) + #boxplot first, with alpha set low so the box fill will be transparent and I can see the jitter points behind, and using shape=NA to hide the outliers
+  geom_point(aes(color= factor(primer), fill = factor(primer)), alpha = 0.65, position = position_jitterdodge(), size = 3.5) + #adding jitter plot with points colored by primer type--using shape in aes to map location to different shaped points
+  scale_fill_manual(values = c("darkslategray4", "darkorange2")) +
+  scale_color_manual(values = c("darkslategray4", "darkorange2")) +
+  facet_wrap(~variable, nrow = 1, scale = "free_y", strip.position = "left") + #creating 3 separate grids on the plot, one for each metric, with the labels for each metrip (the "strips") on the left of the grid instead of the default top
+  labs(x=NULL,
+       y=NULL, fill="Primer", color = "Primer") + #labeling the x-axis, but the y-axis of each grid will be labeled with its individual strip, so no need to include a y-label for the whole plot
+  theme_bw() + #setting the theme, so I can manipulate elements inside the theme next
+  theme(axis.text.x = element_blank(), strip.placement = "outside", #setting the grid strip placement outside the axis hashes
+        strip.background = (element_rect(fill=NA, linetype = 0)), strip.text = (element_text(size = 20, face="bold")), #removing the border and fill from the grid strips
+        axis.title.y = element_text(face="bold"), panel.spacing = unit(2, "lines"), axis.text.y = element_text(size = 16), 
+        legend.title =element_text(size = 20), legend.text = element_text(size = 18) ) #bolding the x-axis label  
+
+
+# creating a dataframe with the values needed to add lines to plots 
+lines <- tibble(
+  variable = factor(c("Chao1 Richness", "Shannon Diversity", "Simpson Evenness"),
+                  levels = c("Chao1 Richness", "Shannon Diversity", "Simpson Evenness")),
+  x = c(0.95, 0.95, 0.95),
+  xend = c(2.05, 2.05, 2.05),
+  y = c(2750, 6.3, 1))
+
+# and creating another dataframe for the posion of stars or n.s. 
+stars <- tibble(
+  variable = factor(c("Chao1 Richness", "Shannon Diversity", "Simpson Evenness"),
+                  levels = c("Chao1 Richness", "Shannon Diversity", "Simpson Evenness")),
+  x = c(1.5, 1.5, 1.5),
+  y = c(2790, 6.4, 1.0035),
+  label = c("n.s.", "n.s.", "n.s."))
+  
+# adding the lines and labels to the strip chart
+cond_alpha_sig <- alpha_strip +
+  geom_segment(data = lines, aes(x=x, xend=xend, y=y, yend=y),
+               inherit.aes=FALSE, size = 0.75) +
+  geom_text(data = stars, aes(x=x, y=y, label=label),
+            inherit.aes = FALSE, size = 5)
+
+#	# Rarefaction from raw counts
+# found in supplement
+
+# V3V4
+bact_asv_counts <- read_excel("Bact_NoFemo-ASV-Counts.xlsx", na = "NA", sheet = 1)
+bact_asv_counts <- bact_asv_counts %>% 
+  column_to_rownames(., loc = 1)
+
+# using "tidy=T" option in vegan rarecuve to get a tidy df that can be plotted in ggplot
+bact_rare_df <- rarecurve(t(bact_asv_counts), step=100, tidy = T)
+
+#finding out where to put the vline on the plot to mark the lowest sequencing depth
+rowSums(t(bact_asv_counts)) 
+
+bact_rare_plot <- ggplot(bact_rare_df, aes(x=Sample, y=Species, color= Site)) +
+  geom_line(size = 1.25) +
+  labs(x="Reads per Sample", y="Number of ASVs", color = "Location (Sample)") +
+  scale_x_continuous(labels = scales::comma) +
+  scale_color_manual(aes(color = "Location (Sample)"), values = c("darkorange", "darkorange2", 
+                                                       "chartreuse3", "darkgoldenrod1", "darkgoldenrod3", 
+                                                       "chartreuse4", "darkslategray3", "darkslategray4"), 
+                     labels = c("Pohaku (Bact674Blue)", "Pohaku (Bact674Green)", 
+                                "Hiolo South (Bact675Black)", "Lohiau (Bact676Black)", 
+                                "Lohiau (Bact676Green)", "Hiolo South (Bact677Black)", 
+                                "Hiolo North (Bact677Blue)", "Hiolo North (Bact677Green)")) +
+  geom_vline(aes(xintercept=130311)) +
+  scale_y_continuous(limits = c(0, 3000), breaks = c(0,500,1000,1500,2000,2500,3000)) +
+  ggtitle(label = "V3V4", ) +
+  theme_classic() +
+  theme(plot.title = element_text(face = "bold", size = 14, hjust = 0.5), legend.key.height = unit(0.25, "cm"), 
+        legend.text = element_text(size = 12), legend.title = element_text(size=12))
+
+# V4V5
+uni_asv_counts <- read_excel("Uni_NoFemo_ASV-Counts.xlsx", na = "NA", sheet = 1)
+uni_asv_counts <- uni_asv_counts %>% 
+  column_to_rownames(., loc = 1)
+
+uni_rare_df <- rarecurve(t(uni_asv_counts), step=100, tidy = T)
+
+rowSums(t(uni_asv_counts)) 
+
+uni_rare_plot <- ggplot(uni_rare_df, aes(x=Sample, y=Species, color= Site)) +
+  geom_line(size = 1.25) +
+  labs(x="Reads per Sample", y="Number of ASVs", color = "Sample") +
+  scale_x_continuous(labels = scales::comma) +
+  scale_color_manual(aes(color = "Location (Sample)"), values = c("darkorange", "darkorange2", 
+                                                                  "chartreuse3", "darkgoldenrod1", "darkgoldenrod3", 
+                                                                  "chartreuse4", "darkslategray3", "darkslategray4"), 
+                     labels = c("Pohaku (Uni674Blue)", "Pohaku (Uni674Green)", 
+                                "Hiolo South (Uni675Black)", "Lohiau (Uni676Black)", 
+                                "Lohiau (Uni676Green)", "Hiolo South (Uni677Black)", 
+                                "Hiolo North (Uni677Blue)", "Hiolo North (Uni677Green)")) +
+  geom_vline(aes(xintercept=316860)) +
+  scale_y_continuous(limits = c(0, 3000), breaks = c(0,500,1000,1500,2000,2500,3000)) +
+  ggtitle(label = "V4V5", ) +
+  theme_classic() +
+  theme(plot.title = element_text(face = "bold", size = 14, hjust = 0.5), legend.key.height = unit(0.25, "cm"), 
+        legend.text = element_text(size = 12), legend.title = element_text(size=12))
+
+# combining both plots onto one page
+ggarrange(bact_rare_plot, NULL, uni_rare_plot, nrow = 3, heights = c(1, 0.1, 1))
