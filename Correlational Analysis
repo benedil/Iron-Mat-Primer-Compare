@@ -1,0 +1,186 @@
+library(vegan)
+library(dplyr)
+library(indicspecies)
+library(readxl)
+library(ggplot2)
+library(magrittr)
+library(RColorBrewer)
+library(ggpubr)
+
+# reading in sample info
+combined_sample_info <- read.table("Combo_NoFemo_Sample_Info.tsv", header = T, row.names = 1, check.names = F, sep = "\t")
+
+# reading in count table, rows are taxa, columns are samples
+combined_count_table <- read.table("Combo_NoFemo_Count_Table.tsv", header = T, row.names = 1, check.names = F, 
+                                   sep = "\t")
+# need to transpose rows/columns
+count <- t(combined_count_table)
+count <- count %>% as.data.frame(count)
+count_df <- as.data.frame(count)
+
+# using the the transposed count table, adding columns for location and primer,
+# and creating a vector for primer from sample info
+count_df$primer = combined_sample_info$primer
+count_df$location = combined_sample_info$location
+# rearranging df to put info columns ahead of abund columns
+count_df_ordered <- count_df %>% relocate(c(primer, location), .before = t1)
+# collecting the abundance data
+abund = count_df_ordered[,3:ncol(count_df_ordered)]
+# creating vector to apply to abundance data
+primer = count_df$primer
+
+# running indicator species command
+inv = multipatt(abund, primer, func = "r.g", control = how(nperm = 9999))
+summary(inv)
+
+
+# creating tables of significant taxa from each dataset
+V3V4_sig <- combined_tax_table[c("t84", "t131", "t345", "t52", "t205", "t148", "t144", "t313", "t111", 
+                                 "t336", "t367", "t724", "t40", "t689", "t227", "t315", "t176", "t339", 
+                                 "t163", "t138", "t80", "t290", "t275", "t655", "t697", "t234", "t9", 
+                                 "t664", "t673", "t88", "t187", "t636", "t274", "t654", "t621", "t637", 
+                                 "t169", "t617", "t120", "t61", "t595", "t224", "t615", "t370", "t306", 
+                                 "t89", "t667", "t246", "t703", "t714"),]
+V3V4_sig_df <- as.data.frame(V3V4_sig)
+write_csv(V3V4_sig_df, "Combo_NoFemo_V3V4_SigTaxaStrings.csv")
+
+V4V5_sig <- combined_tax_table[c("t422", "t878", "t134", "t20", "t225", "t79", "t179", "t881", "t191", 
+                                 "t55", "t69", "t853", "t302", "t748", "t875", "t68", "t73", "t894", 
+                                 "t782", "t449", "t394", "t238", "t408", "t170", "t124", "t14", "t836", 
+                                 "t900", "t854", "t212", "t210", "t866", "t392", "t278", "t249", "t1", 
+                                 "t12", "t82", "t887", "t761", "t113", "t43", "t884", "t325", "t729", 
+                                 "t730", "t244", "t3", "t789", "t98", "t279", "t59", "t33", "t865", 
+                                 "t754", "t897", "t786", "t114", "t747", "t317", "t156", "t766", "t54", 
+                                 "t307", "t237", "t165", "t418", "t333", "t269", "t56", "t258", "t168", 
+                                 "t905"),]
+V4V5_sig_df <- as.data.frame(V4V5_sig)
+write_csv(V4V5_sig_df, "Combo_NoFemo_V4V5_SigTaxaStrings.csv")
+
+V3V4_sig_count <- combined_count_table[c("t84", "t131", "t345", "t52", "t205", "t148", "t144", "t313", "t111", 
+                                       "t336", "t367", "t724", "t40", "t689", "t227", "t315", "t176", "t339", 
+                                       "t163", "t138", "t80", "t290", "t275", "t655", "t697", "t234", "t9", 
+                                       "t664", "t673", "t88", "t187", "t636", "t274", "t654", "t621", "t637", 
+                                       "t169", "t617", "t120", "t61", "t595", "t224", "t615", "t370", "t306", 
+                                       "t89", "t667", "t246", "t703", "t714"),]
+V3V4_sig_count_df <- as.data.frame(V3V4_sig_count)
+write_csv(V3V4_sig_count_df, "Combo_NoFemo_V3V4_SigCounts.csv")
+
+V4V5_sig_count <- combined_count_table[c("t422", "t878", "t134", "t20", "t225", "t79", "t179", "t881", "t191", 
+                                 "t55", "t69", "t853", "t302", "t748", "t875", "t68", "t73", "t894", 
+                                 "t782", "t449", "t394", "t238", "t408", "t170", "t124", "t14", "t836", 
+                                 "t900", "t854", "t212", "t210", "t866", "t392", "t278", "t249", "t1", 
+                                 "t12", "t82", "t887", "t761", "t113", "t43", "t884", "t325", "t729", 
+                                 "t730", "t244", "t3", "t789", "t98", "t279", "t59", "t33", "t865", 
+                                 "t754", "t897", "t786", "t114", "t747", "t317", "t156", "t766", "t54", 
+                                 "t307", "t237", "t165", "t418", "t333", "t269", "t56", "t258", "t168", 
+                                 "t905"),]
+V4V5_sig_Count_df <- as.data.frame(V4V5_sig_count)
+write_csv(V4V5_sig_Count_df, "Combo_NoFemo_V4V5_SigCounts.csv")
+
+#	# Bubble plots 
+
+# FILTERED DATA PLOTS, including correlated taxa above 0.1% relative abundance in either primer
+# added a column to the excel sheets: LogRelAbund, with the perc rel abund log transformed.
+#reading in V3V4 above 0.1% relabund
+V3V4_RAsig_table <- read_xlsx("Combo_NoFemo_SigV3V4-bubble.xlsx", sheet = 2)
+
+V3V4_RAsig_table <- V3V4_RAsig_table %>% 
+  mutate(Phylum=factor(Phylum, levels = c("Patescibacteria", "Acetothermia", "Calditrichota", "Desulfobacterota", "Bacteroidota",
+                                          "Actinobacteriota", "Campylobacterota", "Planctomycetota", "Verrucomicrobiota", 
+                                          "Proteobacteria")),
+                       Class=factor(Class, levels = c("Microgenomatia", "ABY1", "Parcubacteria", "Gracilibacteria", 
+                                                      "Acetothermiia", "Calditrichia", "Desulfuromonadia", "Syntrophobacteria", 
+                                                      "Unclassified", "Acidimicrobiia", "Campylobacteria", "Planctomycetes", 
+                                                      "Chlamydiae", "Alphaproteobacteria", "Gammaproteobacteria")))
+
+
+summary(V3V4_RAsig_table)
+# LogAbsAbund     PercRelAbund      LogRelAbund     
+# Min.   :2.961   Min.   :0.05872   Min.   :-1.2312  
+# 1st Qu.:3.210   1st Qu.:0.10438   1st Qu.:-0.9824  
+# Median :3.569   Median :0.23790   Median :-0.6236  
+# Mean   :3.552   Mean   :0.43087   Mean   :-0.6406  
+# 3rd Qu.:3.784   3rd Qu.:0.39526   3rd Qu.:-0.4082  
+# Max.   :4.731   Max.   :3.45501   Max.   : 0.5384
+
+V3V4_PercCorr_bubble_tall_PL <- ggplot(V3V4_RAsig_table, aes(x=Stat, y=Class)) +
+  geom_point(aes(size=PercRelAbund, color=Phylum), stroke = 1.5, alpha = 0.75) + 
+  scale_color_manual(limits = c("Acetothermia", "Patescibacteria", "Planctomycetota", "Bacteroidota", "Proteobacteria", 
+                                "Calditrichota", "Desulfobacterota", "Campylobacterota", "Actinobacteriota", "Verrucomicrobiota",
+                                "Chloroflexi", "Crenarchaeota", "Nanoarchaeota", "Nitrospirota", "Bdellovibrionota", 
+                                "Nitrospinota", "Unclassified", "Deinococcota", "Spirochaetota", "Halobacterota"),
+                     values = c("Crenarchaeota"="#3588d1", "Nanoarchaeota"="#00b1ee", "Halobacterota"="#00d9fc", 
+                                "Chloroflexi"="#20f5e1", "Patescibacteria"="#44df9f", "Acetothermia"="#A6E73D", 
+                                "Calditrichota"="#e6ffac", "Desulfobacterota"="#b5a95f", "Bacteroidota"="#8A603A", 
+                                "Deinococcota"="#dca68f", "Nitrospirota"="#ffdbdf", "Actinobacteriota"="#ff6fca", 
+                                "Campylobacterota"="#C00CF8", "Planctomycetota"="#e987fa", "Verrucomicrobiota"="#df80ab", 
+                                "Bdellovibrionota"="#A2125D", "Nitrospinota"="#D05D34", "Proteobacteria"="#FF9933", 
+                                "Spirochaetota"="#fdcc61", "Unclassified"="#F6F10F")) +
+  theme(axis.text.x = element_text(angle = -45, vjust = 0.25, hjust = 0.5, size = 16), 
+        axis.text.y = element_text(size = 16),
+        legend.text = element_text(size = 16)) +
+  theme(axis.title.y = element_text(size = 18, face = "bold"), 
+        axis.title.x = element_blank(), #removing the x-axis label since I will be stacking this plot on top of V4V5
+        legend.title = element_text(size = 16)) +
+  theme(panel.background = element_blank(), 
+        panel.border = element_rect(colour = "black", fill = NA),
+        panel.grid.major = element_line(color = "lightgray"),
+        plot.margin = margin(t=20, r=0, b=20, l=20, unit = "pt"),
+        legend.position = "none") +
+  guides(color = guide_legend(override.aes = list(size=5)), size = guide_legend(order = 1, override.aes = list(size=c(1, 5, 10, 15)))) +
+  scale_size(trans = "pseudo_log", range = c(1, 15), breaks = c(0.1, 0.5, 1, 3.5)) +
+  labs(x="Correlation Coefficient", size="% Relative Abundance")
+V3V4_PercCorr_bubble_tall_PL
+
+summary(V4V5_RAsig_table)
+# LogAbsAbund     PercRelAbund      LogRelAbund     
+# Min.   :3.196   Min.   : 0.0532   Min.   :-1.2741  
+# 1st Qu.:3.500   1st Qu.: 0.1072   1st Qu.:-0.9699  
+# Median :3.853   Median : 0.2413   Median :-0.6174  
+# Mean   :3.915   Mean   : 1.7038   Mean   :-0.5554  
+# 3rd Qu.:4.095   3rd Qu.: 0.4231   3rd Qu.:-0.3745  
+# Max.   :5.996   Max.   :33.5777   Max.   : 1.5261
+
+V4V5_PercCorr_bubble_tall_PL <- ggplot(V4V5_RAsig_table, aes(x=Stat, y=Class)) +
+  geom_point(aes(size=PercRelAbund, color=factor(Phylum)), stroke = 1.5, alpha = 0.75) + 
+  theme(axis.text.x = element_text(angle = -45, vjust = 0.25, hjust = 0.5, size = 16), 
+        axis.text.y = element_text(size = 16),
+        legend.text = element_text(size = 16)) +
+  theme(axis.title.y = element_text(size = 18, face = "bold"), 
+        axis.title.x = element_text(size = 18, face = "bold"),
+        legend.title = element_text(size = 18, hjust = 0.5, face = "bold")) +
+  theme(panel.background = element_blank(), 
+        panel.border = element_rect(colour = "black", fill = NA),
+        panel.grid.major = element_line(color = "lightgray"),
+        plot.margin = margin(t=20, r=0, b=20, l=20, unit = "pt")) +
+  scale_x_continuous(name="Correlation Coefficient", limits = c(0.26,0.85), breaks = c(0.4, 0.6, 0.8), labels = c(0.4, 0.6, 0.8)) +
+  scale_color_manual(limits = c("Crenarchaeota", "Nanoarchaeota", "Halobacterota", "Chloroflexi", "Patescibacteria", 
+                                "Acetothermia", "Calditrichota", "Desulfobacterota", "Bacteroidota", "Deinococcota", 
+                                "Nitrospirota", "Actinobacteriota", "Campylobacterota", "Planctomycetota", "Verrucomicrobiota", 
+                                "Bdellovibrionota", "Nitrospinota", "Proteobacteria", "Spirochaetota", "Unclassified-Bacteria"),
+                     values = c("Crenarchaeota"="#3588d1", "Nanoarchaeota"="#00b1ee", "Halobacterota"="#00d9fc", 
+                                "Chloroflexi"="#20f5e1", "Patescibacteria"="#44df9f", "Acetothermia"="#A6E73D", 
+                                "Calditrichota"="#e6ffac", "Desulfobacterota"="#b5a95f", "Bacteroidota"="#8A603A", 
+                                "Deinococcota"="#dca68f", "Nitrospirota"="#ffdbdf", "Actinobacteriota"="#ff6fca", 
+                                "Campylobacterota"="#C00CF8", "Planctomycetota"="#e987fa", "Verrucomicrobiota"="#df80ab", 
+                                "Bdellovibrionota"="#A2125D", "Nitrospinota"="#D05D34", "Proteobacteria"="#FF9933", 
+                                "Spirochaetota"="#fdcc61", "Unclassified-Bacteria"="#F6F10F")) +
+  guides(color = guide_legend(override.aes = list(size=4), ncol = 1, reverse = T), size = guide_legend(order = 1, override.aes = list(size=c(1, 5, 10, 15, 30)))) +
+  scale_size(trans = "pseudo_log", range = c(1, 30), breaks = c(0.1, 0.5, 1, 3, 30)) +
+  labs(x="Correlation Coefficient", size="% Relative\nAbundance", color="Phylum") 
+V4V5_PercCorr_bubble_tall_PL
+
+
+# snipping out the V4V5 legend because it has the scales I want for the bubbles
+RAsig_legend_tall_PL <- get_legend(V4V5_PercCorr_bubble_tall_PL, position = "right")
+
+# creating a version of V3V4 without a legend
+V3V4_RAbub_tall_PL <- V3V4_PercCorr_bubble_tall_PL + theme(legend.position = "none")
+
+# creating a version of V4V5 without a legend
+V4V5_RAbub_tall_PL <- V4V5_PercCorr_bubble_tall_PL + theme(legend.position = "none")
+
+#creating a plot with just the figures
+RA_Stacked_tall_PL <- ggarrange(V3V4_RAbub_tall_PL, V4V5_RAbub_tall_PL, nrow = 2, heights = c(0.75,1))
+
+ggarrange(RA_Stacked_tall_PL, RAsig_legend_tall_PL, ncol = 2, widths = c(1, 0.35)) 
