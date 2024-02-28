@@ -1,0 +1,59 @@
+library(dplyr)
+library(tidyverse)
+library(phyloseq)
+library(vegan)
+library(DESeq2)
+library(dendextend)
+
+# much of this comes from AstrobioMike tutorial at "https://astrobiomike.github.io/amplicon/dada2_workflow_ex"
+
+# data used here are from both the V3V4 and V4V5 datasets, after both were iteratively clustered to finest-scale unique taxonomic strings
+
+# reading in count and tax tables, as well as a sample info table
+combined_count_table <- read.table("Combo_NoFemo_Count_Table.tsv", header = T, row.names = 1, check.names = F, 
+                                   sep = "\t")
+combined_tax_table <- as.matrix(read.table("Combined_Tax_Table.tsv", header = T, row.names = 1, check.names = F, sep = "\t"))
+combined_sample_info <- read.table("Combo_NoFemo_Sample_Info.tsv", header = T, row.names = 1, check.names = F, sep = "\t")
+
+# # normalizing samples using variance stabilizing transformation
+
+# making DESeq2 object
+deseq_counts <- DESeqDataSetFromMatrix(combined_count_table, colData = combined_sample_info, design = ~primer)
+# normalizing
+deseq_counts_vst <- varianceStabilizingTransformation(deseq_counts)
+
+vst_trans_count_tab <- assay(deseq_counts_vst)
+
+# calculating Euclidean distance matrix
+euc_dist <- dist(t(vst_trans_count_tab))
+
+#	# PCoA
+
+# making phyloseq object out of the DESeq2 transformed table:
+count_phy <- otu_table(vst_trans_count_tab, taxa_are_rows = T)
+sample_info_phy <- sample_data(combined_sample_info)
+tax_phy <- tax_table(combined_tax_table)
+combined_physeq <- phyloseq(count_phy, sample_info_phy, tax_phy)
+
+# generating and visualizing the PCoA with phyloseq
+combined_pcoa <- ordinate(combined_physeq, method = "MDS", distance = "euclidean")
+eigen_vals <- combined_pcoa$values$Eigenvalues # allows us to scale the axes according to their magnitude of separating apart the samples
+
+# plot with the 95% CI ellipses
+plot_ordination(combined_physeq, combined_pcoa, color="primer") + 
+  geom_point(size=2) + labs(col="Primer") + 
+  stat_ellipse(level = 0.95) +
+  coord_fixed(sqrt(eigen_vals[2]/eigen_vals[1])) +  
+  scale_color_manual(values=c("darkslategray4", "darkorange2")) + 
+  theme_bw() + theme(legend.position="right", axis.title = element_text(size=18), legend.text = element_text(size=16), 
+                     legend.title = element_text(size=18), axis.text = element_text(size=14)) 
+
+#	# BetaDisper & Permanova in vegan
+
+# assessing primer choice
+anova(betadisper(euc_dist, combined_sample_info$primer)) #p value returned: 0.6159
+adonis2(euc_dist~combined_sample_info$primer) #p-value of 0.001, highly significant
+
+# assessing location
+anova(betadisper(euc_dist, combined_sample_info$location)) #p-value < 0.05, significant differences of within-group dispersions
+# location cannot be used in permanova
