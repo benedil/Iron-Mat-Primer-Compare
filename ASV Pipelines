@@ -1,0 +1,197 @@
+library(dada2)
+library(ShortRead)
+library(DECIPHER)
+
+#	# V3V4 trimmed reads through DADA2
+
+fnFs <- sort(list.files(path, pattern="_t1.1.fastq", full.names = TRUE))
+fnRs <- sort(list.files(path, pattern="_t1.2.fastq", full.names = TRUE))
+
+sample.names <- sapply(strsplit(basename(fnFs), "_"), `[`, 1)
+
+readFastq(fnFs[1])
+readFastq(fnRs[1])
+
+plotQualityProfile(fnFs[1:10])
+plotQualityProfile(fnRs[1:10])
+
+filtFs <- file.path(path, "filtered", paste0(sample.names, "_F_filt.fastq.gz"))
+filtRs <- file.path(path, "filtered", paste0(sample.names, "_R_filt.fastq.gz"))
+names(filtFs) <- sample.names
+names(filtRs) <- sample.names
+
+out <- filterAndTrim(fnFs, filtFs, fnRs, filtRs, truncLen=c(275,210),
+                     maxN=0, maxEE=c(2,4), truncQ=2, rm.phix=TRUE,
+                     compress=TRUE, multithread=FALSE) 
+
+
+errF <- learnErrors(filtFs, multithread=TRUE)
+errR <- learnErrors(filtRs, multithread=TRUE)
+
+plotErrors(errF, nominalQ=TRUE)
+plotErrors(errR, nominalQ=TRUE)
+
+dadaFs <- dada(filtFs, err=errF, multithread=TRUE, pool = "pseudo")
+dadaRs <- dada(filtRs, err=errR, multithread=TRUE, pool = "pseudo")
+
+mergers <- mergePairs(dadaFs, filtFs, dadaRs, filtRs, verbose=TRUE)
+
+seqtab <- makeSequenceTable(mergers)
+dim(seqtab)
+
+table(nchar(getSequences(seqtab)))
+
+# removing chimeras
+seqtab.nochim <- removeBimeraDenovo(seqtab, method="consensus", multithread=TRUE, verbose=TRUE)
+
+dim(seqtab.nochim)
+
+sum(seqtab.nochim)/sum(seqtab)
+
+# read tracking
+getN <- function(x) sum(getUniques(x))
+track <- cbind(out, sapply(dadaFs, getN), sapply(dadaRs, getN), sapply(mergers, getN), rowSums(seqtab.nochim))
+colnames(track) <- c("input", "filtered", "denoisedF", "denoisedR", "merged", "nonchim")
+rownames(track) <- sample.names
+track
+write.table(track, "Bacterial-final_ReadTracking.tsv", quote=FALSE, sep="\t", col.names=NA)
+
+# using the DECIPHER package to assign taxonomy ("http://www2.decipher.codes/index.html")
+load("SILVA_SSU_r138_2019.RData")
+
+# creating DNAStringSet object of our ASVs
+dna <- DNAStringSet(getSequences(seqtab.nochim))
+
+# classifying
+tax_info <- IdTaxa(test=dna, trainingSet=trainingSet, strand="both", processors=NULL)
+
+# and using the AstroBioMike tutorial, "extracting the standard goods from DADA2"
+# found at "https://astrobiomike.github.io/amplicon/dada2_workflow_ex"
+# giving seq headers managable names
+asv_seqs <- colnames(seqtab.nochim)
+asv_headers <- vector(dim(seqtab.nochim)[2], mode="character")
+
+for (i in 1:dim(seqtab.nochim)[2]) {
+  asv_headers[i] <- paste(">ASV", i, sep="_")
+}
+
+# making and writing out a fasta of final ASV seqs:
+asv_fasta <- c(rbind(asv_headers, asv_seqs))
+write(asv_fasta, "Bact-trim-pooled_ASVs.fa")
+
+# count table
+asv_tab <- t(seqtab.nochim)
+row.names(asv_tab) <- sub(">", "", asv_headers)
+write.table(asv_tab, "Bact-trim-pooled_ASVs_counts.tsv", sep="\t", quote=F, col.names=NA)
+
+# tax table
+ranks <- c("domain", "phylum", "class", "order", "family", "genus", "species")
+asv_tax <- t(sapply(tax_info, function(x) {
+  m <- match(ranks, x$rank)
+  taxa <- x$taxon[m]
+  taxa[startsWith(taxa, "unclassified_")] <- NA
+  taxa
+}))
+colnames(asv_tax) <- ranks
+rownames(asv_tax) <- gsub(pattern=">", replacement="", x=asv_headers)
+
+write.table(asv_tax, "Bact-trim-pooled_ASVs_taxonomy.tsv", sep = "\t", quote=F, col.names=NA)
+
+
+
+
+#	# V4V5 trimmed reads through DADA2 
+# (***fresh environment***)
+
+fnFs <- sort(list.files(path, pattern="_t1.1.fastq", full.names = TRUE))
+fnRs <- sort(list.files(path, pattern="_t1.2.fastq", full.names = TRUE))
+
+sample.names <- sapply(strsplit(basename(fnFs), "_"), `[`, 1)
+
+readFastq(fnFs[1])
+readFastq(fnRs[1])
+
+plotQualityProfile(fnFs[1:10])
+plotQualityProfile(fnRs[1:10])
+
+filtFs <- file.path(path, "filtered", paste0(sample.names, "_F_filt.fastq.gz"))
+filtRs <- file.path(path, "filtered", paste0(sample.names, "_R_filt.fastq.gz"))
+names(filtFs) <- sample.names
+names(filtRs) <- sample.names
+
+out <- filterAndTrim(fnFs, filtFs, fnRs, filtRs, truncLen=c(273,250),
+                     maxN=0, maxEE=c(2,2), truncQ=2, rm.phix=TRUE,
+                     compress=TRUE, multithread=FALSE) # On Windows set multithread=FALSE
+
+
+rrF <- learnErrors(filtFs, multithread=TRUE)
+errR <- learnErrors(filtRs, multithread=TRUE)
+
+plotErrors(errF, nominalQ=TRUE)
+plotErrors(errR, nominalQ=TRUE)
+
+dadaFs <- dada(filtFs, err=rrF, multithread=TRUE, pool = "pseudo")
+dadaRs <- dada(filtRs, err=errR, multithread=TRUE, pool = "pseudo")
+
+dadaFs[[1]]
+
+# merging paired reads
+mergers <- mergePairs(dadaFs, filtFs, dadaRs, filtRs, verbose=TRUE)
+
+seqtab <- makeSequenceTable(mergers)
+dim(seqtab)
+
+table(nchar(getSequences(seqtab)))
+
+# removing chimeras
+seqtab.nochim <- removeBimeraDenovo(seqtab, method="consensus", multithread=TRUE, verbose=TRUE)
+dim(seqtab.nochim)
+sum(seqtab.nochim)/sum(seqtab)
+
+# read tracking
+getN <- function(x) sum(getUniques(x))
+track <- cbind(out, sapply(dadaFs, getN), sapply(dadaRs, getN), sapply(mergers, getN), rowSums(seqtab.nochim))
+colnames(track) <- c("input", "filtered", "denoisedF", "denoisedR", "merged", "nonchim")
+rownames(track) <- sample.names
+track
+
+write.table(track, "Universal-final_ReadTracking.tsv", quote=FALSE, sep="\t", col.names=NA)
+
+# using the DECIPHER package to assign taxonomy ("http://www2.decipher.codes/index.html")
+load("SILVA_SSU_r138_2019.RData")
+
+# creating DNAStringSet object of our ASVs
+dna <- DNAStringSet(getSequences(seqtab.nochim))
+# classifying
+tax_info <- IdTaxa(test=dna, trainingSet=trainingSet, strand="both", processors=NULL)
+
+# and using the AstroBioMike tutorial again, "extracting the standard goods from DADA2"
+# giving seq headers more manageable names 
+asv_seqs <- colnames(seqtab.nochim)
+asv_headers <- vector(dim(seqtab.nochim)[2], mode="character")
+
+for (i in 1:dim(seqtab.nochim)[2]) {
+  asv_headers[i] <- paste(">ASV", i, sep="_")
+}
+
+# making and writing out a fasta of final ASV seqs:
+asv_fasta <- c(rbind(asv_headers, asv_seqs))
+write(asv_fasta, "Uni-trim-pooled_ASVs.fa")
+
+# count table:
+asv_tab <- t(seqtab.nochim)
+row.names(asv_tab) <- sub(">", "", asv_headers)
+write.table(asv_tab, "Uni-trim-pooled_ASVs_counts.tsv", sep="\t", quote=F, col.names=NA)
+
+# tax table:
+ranks <- c("domain", "phylum", "class", "order", "family", "genus", "species")
+asv_tax <- t(sapply(tax_info, function(x) {
+  m <- match(ranks, x$rank)
+  taxa <- x$taxon[m]
+  taxa[startsWith(taxa, "unclassified_")] <- NA
+  taxa
+}))
+colnames(asv_tax) <- ranks
+rownames(asv_tax) <- gsub(pattern=">", replacement="", x=asv_headers)
+
+write.table(asv_tax, "Uni-trim-pooled_ASVs_taxonomy.tsv", sep = "\t", quote=F, col.names=NA)
